@@ -2,6 +2,7 @@
 """Finder audio Quick Actions. Originals are never modified."""
 import argparse
 import datetime
+from fractions import Fraction
 import json
 import os
 from pathlib import Path
@@ -156,10 +157,70 @@ def plan(path, mode, settings):
             'bitrate': bitrate if fmt == 'mp3' else None, 'suffix': suffix, 'label': label, 'format': fmt}
 
 
+def publish_output(temp, destination, base, suffix):
+    count = 1
+    while True:
+        target = destination / (base + ('' if count == 1 else '_' + str(count)) + suffix)
+        try:
+            os.link(temp, target)
+            return target
+        except FileExistsError:
+            count += 1
+
+
+def pcm_frame_count(stream):
+    """Use the decoded WAV's integer time base, never rounded duration seconds."""
+    frames = int(stream['duration_ts']) * Fraction(stream['time_base']) * int(stream['sample_rate'])
+    if frames.denominator != 1 or frames <= 0:
+        raise ValueError('Could not determine the exact decoded audio sample count.')
+    return int(frames)
+
+
+def pad_to_five_seconds(path):
+    # Decode once before counting: lossy container duration can include encoder padding.
+    p = plan(path, 'custom', {'format': 'wav', 'channels': 'keep', 'depth': 'keep'})
+    destination = path.parent / 'Converted'
+    destination.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='.padding-', dir=str(destination)) as temporary:
+        decoded = Path(temporary) / 'decoded.wav'
+        command = [FFMPEG, '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
+                   '-i', str(path), '-map', '0:a:0', '-map_metadata', '0', '-vn']
+        process = subprocess.run(command + p['args'] + ['-rf64', 'auto', str(decoded)],
+                                 text=True, capture_output=True)
+        if process.returncode:
+            raise ValueError(process.stderr.strip()[-700:])
+        original, _ = probe(decoded)
+        frames = pcm_frame_count(original)
+        interval = p['rate'] * 5
+        target_frames = ((frames + interval - 1) // interval) * interval
+        seconds = target_frames // p['rate']
+        output_path = decoded
+        if target_frames > frames:
+            output_path = Path(temporary) / 'padded.wav'
+            process = subprocess.run([
+                FFMPEG, '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
+                '-i', str(decoded), '-map', '0:a:0', '-map_metadata', '0',
+                '-c:a', original['codec_name'], '-af', 'apad=whole_len=' + str(target_frames),
+                '-rf64', 'auto', str(output_path)], text=True, capture_output=True)
+            if process.returncode:
+                raise ValueError(process.stderr.strip()[-700:])
+        output, _ = probe(output_path)
+        if (pcm_frame_count(output) != target_frames or int(output['sample_rate']) != p['rate']
+                or output['channels'] != p['channels'] or bits_of(output) != p['bits']):
+            raise ValueError('Padded WAV sample count or audio format verification failed.')
+        target = publish_output(output_path, destination, path.stem + '_padded_' + str(seconds) + 's', '.wav')
+        return {'source': str(path), 'status': 'success', 'output': str(target),
+                'sample_rate': p['rate'], 'channels': p['channels'], 'bits': p['bits'], 'format': 'wav',
+                'duration_seconds': seconds, 'source_frames': frames,
+                'output_frames': target_frames, 'padding_frames': target_frames - frames}
+
+
 def convert(path, mode, settings):
     path = Path(path).absolute()
     if not path.is_file():
         raise ValueError('Select regular audio files only.')
+    if mode == 'pad':
+        return pad_to_five_seconds(path)
     p = plan(path, mode, settings)
     if p is None:
         return {'source': str(path), 'status': 'skipped', 'reason': 'Already mono.'}
@@ -181,14 +242,7 @@ def convert(path, mode, settings):
         if p['bitrate'] and int(output.get('bit_rate') or 0) != p['bitrate'] * 1000:
             raise ValueError('Output MP3 bitrate verification failed.')
         base = path.stem + '_' + p['label']
-        count = 1
-        while True:
-            target = destination / (base + ('' if count == 1 else '_' + str(count)) + p['suffix'])
-            try:
-                os.link(temp, target)
-                break
-            except FileExistsError:
-                count += 1
+        target = publish_output(temp, destination, base, p['suffix'])
         return {'source': str(path), 'status': 'success', 'output': str(target),
                 'sample_rate': p['rate'], 'channels': p['channels'], 'bits': p['bits'], 'format': p['format']}
     finally:
@@ -198,7 +252,7 @@ def convert(path, mode, settings):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('mode', choices=['mono', 'mp3', 'custom'])
+    parser.add_argument('mode', choices=['mono', 'mp3', 'custom', 'pad'])
     parser.add_argument('--settings-json', help='Custom settings as JSON; use with headless mode.')
     parser.add_argument('files', nargs='+')
     args = parser.parse_args()

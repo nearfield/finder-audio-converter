@@ -6,7 +6,7 @@ parser.add_argument('--python', required=True)
 args = parser.parse_args()
 ROOT = args.output
 LIVE = args.runtime / 'audio_convert.py'
-for mode, name in [('mono','Downmix to Mono'), ('mp3','MP3 256 kbps'), ('custom','Custom Settings…')]:
+for mode, name in [('mono','Downmix to Mono'), ('mp3','MP3 256 kbps'), ('custom','Custom Settings…'), ('pad','Pad to Next 5 Seconds')]:
     bundle = ROOT / 'workflows' / (name + '.workflow') / 'Contents'
     (bundle / 'Resources').mkdir(parents=True, exist_ok=True)
     command = 'exec ' + shlex.quote(args.python) + ' ' + shlex.quote(str(LIVE)) + ' ' + mode + ' -- "$@"'
@@ -31,11 +31,11 @@ for mode, name in [('mono','Downmix to Mono'), ('mp3','MP3 256 kbps'), ('custom'
                 'serviceProcessesInput':0, 'workflowTypeIdentifier':'com.apple.Automator.servicesMenu',
                 'useAutomaticInputType':False, 'presentationMode':15}}
     info = {'CFBundleIdentifier':'io.github.nearfield.finder-audio.'+mode, 'CFBundleName':name,
-            'CFBundleShortVersionString':'1.0.0','CFBundleVersion':'2','CFBundleDevelopmentRegion':'en','CFBundleIconFile':'AudioConverter.icns',
+            'CFBundleShortVersionString':'1.1.0','CFBundleVersion':'3','CFBundleDevelopmentRegion':'en','CFBundleIconFile':'AudioConverter.icns',
             'NSServices':[{'NSIconName':'NSTouchBarAudioOutputVolumeHigh', 'NSBackgroundColorName':'background', 'NSMenuItem':{'default':name}, 'NSMessage':'runWorkflowAsService',
                  'NSRequiredContext':{'NSApplicationIdentifier':'com.apple.finder'},
                  'NSSendFileTypes':['public.audio']}]}
     (bundle/'Resources/AudioConverter.icns').write_bytes((ROOT/'Finder Audio Converter.app/Contents/Resources/AudioConverter.icns').read_bytes())
     (bundle/'Info.plist').write_bytes(plistlib.dumps(info))
     (bundle/'Resources/document.wflow').write_bytes(plistlib.dumps(data))
-print('Built 3 workflows')
+print('Built 4 workflows')

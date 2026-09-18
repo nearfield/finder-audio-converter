@@ -16,7 +16,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parent.parent
 PROJECT = 'io.github.nearfield.finder-audio'
 APP = 'Finder Audio Converter.app'
-ACTIONS = [('mono', 'Downmix to Mono'), ('mp3', 'MP3 256 kbps'), ('custom', 'Custom Settings…')]
+ACTIONS = [('mono', 'Downmix to Mono'), ('mp3', 'MP3 256 kbps'), ('custom', 'Custom Settings…'), ('pad', 'Pad to Next 5 Seconds')]
 DEFAULT_RUNTIME = Path.home() / 'Library/Application Support/Finder Audio Converter'
 DEFAULT_SERVICES = Path.home() / 'Library/Services'
 
@@ -84,7 +84,7 @@ def build(folder, runtime, services):
     (contents / 'Resources/AudioConverter.icns').write_bytes(b'icns' + struct.pack('>I', len(chunks) + 8) + chunks)
     info = dict(CFBundleIdentifier=PROJECT + '.dialog', CFBundleName='Finder Audio Converter',
                 CFBundleDisplayName='Finder Audio Converter', CFBundleExecutable='AudioDialog',
-                CFBundlePackageType='APPL', CFBundleShortVersionString='1.0.0', CFBundleVersion='1',
+                CFBundlePackageType='APPL', CFBundleShortVersionString='1.1.0', CFBundleVersion='3',
                 LSMinimumSystemVersion='13.0', CFBundleDevelopmentRegion='en', CFBundleLocalizations=['en'],
                 CFBundleIconFile='AudioConverter')
     (contents / 'Info.plist').write_bytes(plistlib.dumps(info))
@@ -95,7 +95,7 @@ def build(folder, runtime, services):
     keys = [PROJECT + '.' + mode + ' - ' + name + ' - runWorkflowAsService' for mode, name in ACTIONS]
     (runtime_build / 'service-keys.json').write_text(json.dumps(keys))
     (runtime_build / 'manifest.json').write_text(json.dumps({
-        'project': PROJECT, 'version': '1.0.0', 'services': str(services), 'python': os.path.abspath(sys.executable),
+        'project': PROJECT, 'version': '1.1.0', 'services': str(services), 'python': os.path.abspath(sys.executable),
         'workflows': [name + '.workflow' for _, name in ACTIONS]}, indent=2))
     return runtime_build
 
@@ -181,7 +181,7 @@ def main():
             for current, previous in reversed(saved):
                 shutil.move(str(previous), str(current))
             raise
-    print('Installed three Quick Actions with the macOS Audio Output icon.')
+    print('Installed four Quick Actions with the macOS Audio Output icon.')
     print('Runtime: ' + str(runtime))
     print('Backup: ' + str(backup))
     if not args.skip_register:

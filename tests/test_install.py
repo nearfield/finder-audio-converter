@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory(prefix='finder-audio-install-') as temporary:
     subprocess.run([config['ffmpeg'], '-v', 'error', '-f', 'lavfi', '-i',
                     'aevalsrc=0.1*sin(2*PI*440*t)|0.1*sin(2*PI*880*t):s=48000:d=0.2',
                     '-c:a', 'pcm_s24le', str(source)], check=True)
-    for name, mode in [('Downmix to Mono', 'mono'), ('MP3 256 kbps', 'mp3'), ('Custom Settings…', 'custom')]:
+    for name, mode in [('Downmix to Mono', 'mono'), ('MP3 256 kbps', 'mp3'), ('Custom Settings…', 'custom'), ('Pad to Next 5 Seconds', 'pad')]:
         workflow = services / (name + '.workflow') / 'Contents'
         info = plistlib.loads((workflow / 'Info.plist').read_bytes())
         assert info['NSServices'][0]['NSIconName'] == 'NSTouchBarAudioOutputVolumeHigh'
@@ -37,6 +37,9 @@ with tempfile.TemporaryDirectory(prefix='finder-audio-install-') as temporary:
             report = json.loads(result)
             assert report[0]['status'] == 'success'
             assert report[0]['channels'] == (1 if mode == 'mono' else 2)
+            if mode == 'pad':
+                assert report[0]['output_frames'] == 48000 * 5
+                assert report[0]['padding_frames'] > 0
         else:
             subprocess.run([sys.executable, str(runtime / 'audio_convert.py'), mode, '--settings-json',
                             '{"format":"flac","depth":"24","channels":"mono"}', str(source)], env=env, check=True)
